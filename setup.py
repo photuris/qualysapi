@@ -43,5 +43,7 @@ setup(name=__pkgname__,
       ],
       install_requires=[
           'requests',
+          'lxml',
+          'six'
       ],
      )

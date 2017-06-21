@@ -1,5 +1,4 @@
-from __future__ import absolute_import
-from __future__ import print_function
+from __future__ import (absolute_import, print_function, unicode_literals)
 __author__ = 'Parag Baxi <parag.baxi@gmail.com>'
 __copyright__ = 'Copyright 2013, Parag Baxi'
 __license__ = 'Apache License 2.0'
@@ -7,9 +6,10 @@ __license__ = 'Apache License 2.0'
 """ Module that contains classes for setting up connections to QualysGuard API
 and requesting data from it.
 """
+import sys
 import logging
 import time
-import urlparse
+from six.moves.urllib.parse import urlparse
 from collections import defaultdict
 
 import requests
@@ -23,6 +23,12 @@ import qualysapi.api_actions as api_actions
 # Setup module level logging.
 logging.basicConfig()
 logger = logging.getLogger(__name__)
+
+# Setup response-string handling for Python 2 and 3
+if sys.version_info < (3,):
+    text_type = str
+else:
+    text_type = bytes
 
 try:
     from lxml import etree
@@ -317,10 +323,11 @@ class QGConnector(api_actions.QGActions):
                 logger.debug(e)
                 pass
             # Response received.
-            response = str(request.content)
+            response = text_type(request.content).decode('utf-8')
             logger.debug('response text =\n%s' % (response))
             # Keep track of how many retries.
             retries += 1
+
             # Check for concurrent scans limit.
             if not ('<responseCode>INVALID_REQUEST</responseCode>' in response and \
                                 '<errorMessage>You have reached the maximum number of concurrent running scans' in response and \

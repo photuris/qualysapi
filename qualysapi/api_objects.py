@@ -3,6 +3,9 @@ import datetime
 import xmltodict
 from lxml import objectify
 
+"""Object representations of API data types."""
+
+
 class Host(object):
     """Scanned Host."""
 
@@ -48,42 +51,103 @@ class Host(object):
         self.os = os
         self.tracking_method = tracking_method
 
+
 class AssetGroup(object):
-    def __init__(self, business_impact, id, last_update, scanips, scandns, scanner_appliances, title):
+    """Asset Group."""
+
+    def __init__(self, business_impact=None, id=None, last_update=None,
+                 scan_ips=None, scan_dns=None, scanner_appliances=None,
+                 title=None):
+        """
+        Initialize instance of AssetGroup.
+
+        Keyword Args:
+            business_impact (str): Business impact.
+            id (int): ID.
+            last_update (str): Last updated date.
+            scan_ips (list): Scan IPs.
+            scan_dns (str): Scan DNS.
+            scanner_appliances (list): Scanner appliances.
+            title (str): Asset Group title.
+        """
         self.business_impact = str(business_impact)
         self.id = int(id)
         self.last_update = str(last_update)
-        self.scanips = scanips
-        self.scandns = scandns
+        self.scan_ips = scan_ips
+        self.scan_dns = scan_dns
         self.scanner_appliances = scanner_appliances
         self.title = str(title)
         
-    def addAsset(conn, ip):
+    def addAsset(self, conn, ip):
+        """Add Asset to Asset Group."""
         call = '/api/2.0/fo/asset/group/'
-        parameters = {'action': 'edit', 'id': self.id, 'add_ips': ip}
+        parameters = {'action': 'edit',
+                      'id': self.id,
+                      'add_ips': ip}
+
         conn.request(call, parameters)
-        self.scanips.append(ip)
+
+        self.scan_ips.append(ip)
         
-    def setAssets(conn, ips):
+    def setAssets(self, conn, ips):
+        """Add Assets to Asset Group."""
         call = '/api/2.0/fo/asset/group/'
-        parameters = {'action': 'edit', 'id': self.id, 'set_ips': ips}
+        parameters = {'action': 'edit',
+                      'id': self.id,
+                      'set_ips': ips}
+
         conn.request(call, parameters)
-        
+
+        for ip in ips:
+            self.scan_ips.append(ip)
+
+    # PEP8 cleanup, preserved method names for backwards-compatibility
+    add_asset = addAsset
+    set_assets = setAssets
+    add_assets = setAssets
+
+
 class ReportTemplate(object):
-    def __init__(self, isGlobal, id, last_update, template_type, title, type, user):
-        self.isGlobal = int(isGlobal)
+    """Report Template."""
+
+    def __init__(self, is_global=None, id=None, last_update=None,
+                 template_type=None, title=None, type=None, user=None):
+        """
+        Initialize instance of ReportTemplate.
+
+        Keyword Args:
+            is_global (bool): Is global Report Template.
+            id (int): ID.
+            last_update (str): Last updated date.
+            template_type (str): Template type.
+            title (str): Report Template title.
+            type (str): Report Template type.
+            user (dict): Qualys User.
+        """
+        self.isGlobal = int(is_global)
+        self.is_global = self.isGlobal
         self.id = int(id)
-        self.last_update = str(last_update).replace('T', ' ').replace('Z', '').split(' ')
+        self.last_update = str(last_update).replace('T', ' ') \
+                                           .replace('Z', '') \
+                                           .split(' ')
         self.template_type = template_type
         self.title = title
         self.type = type
         self.user = user.LOGIN
-        
+
+
 class Report(object):
-    def __init__(self, expiration_datetime, id, launch_datetime, output_format, size, status, type, user_login):
-        self.expiration_datetime = str(expiration_datetime).replace('T', ' ').replace('Z', '').split(' ')
+    """Report."""
+    def __init__(self, expiration_datetime, id,
+                 launch_datetime, output_format, size,
+                 status, type, user_login):
+        self.expiration_datetime = str(expiration_datetime).replace('T', ' ') \
+                                                           .replace('Z', '') \
+                                                           .split(' ')
         self.id = int(id)
-        self.launch_datetime = str(launch_datetime).replace('T', ' ').replace('Z', '').split(' ')
+        self.launch_datetime = str(launch_datetime).replace('T', ' ') \
+                                                   .replace('Z', '') \
+                                                   .split(' ')
         self.output_format = output_format
         self.size = size
         self.status = status.STATE
@@ -91,13 +155,16 @@ class Report(object):
         self.user_login = user_login
         
     def download(self, conn):
+        """Download Report."""
         call = '/api/2.0/fo/report'
         parameters = {'action': 'fetch', 'id': self.id}
+
         if self.status == 'Finished':
             return conn.request(call, parameters)
-        
+
+
 class Scan(object):
-    """Scan job."""
+    """Scan Job."""
     def __init__(self, asset_groups=[], duration=None, launch_datetime=None,
                  option_profile=None, processed=None, ref=None, status=None,
                  target=None, title=None, type=None, user_login=None,
@@ -142,42 +209,75 @@ class Scan(object):
         self.type = str(type)
         self.user_login = str(user_login)
         
-    # def cancel(self, conn):
-    #     """Cancel scan."""
-    #     cancelled_statuses = ['Cancelled', 'Finished', 'Error']
+    def cancel(self, conn):
+        """Cancel scan."""
 
-    #     if any(self.status in s for s in cancelled_statuses):
-    #         err_msg = 'Scan cannot be cancelled because its status is {0}' \
-    #                   .format(self.status)
+        # Raise exception if Scan is already cancelled or finished
+        if any(self.status in s for s in ['Cancelled', 'Finished', 'Error']):
+            err_msg = 'Scan cannot be cancelled because its status is {0}' \
+                      .format(self.status)
 
-    #         raise ValueError(err_msg)
+            raise ValueError(err_msg)
 
-    #     else:
-    #         call = '/api/2.0/fo/scan/'
-    #         parameters = {'action': 'cancel', 'scan_ref': self.ref}
-    #         conn.request(call, parameters)
-            
-    #         parameters = {'action': 'list', 'scan_ref': self.ref, 'show_status': 1}
-    #         self.status = objectify.fromstring(conn.request(call, parameters)).RESPONSE.SCAN_LIST.SCAN.STATUS.STATE
+        # Cancel Scan
+        call = '/api/2.0/fo/scan/'
+        parameters = {'action': 'cancel',
+                        'scan_ref': self.ref}
 
-    # def pause(self, conn):
-    #     if self.status != "Running":
-    #         raise ValueError("Scan cannot be paused because its status is "+self.status)
-    #     else:
-    #         call = '/api/2.0/fo/scan/'
-    #         parameters = {'action': 'pause', 'scan_ref': self.ref}
-    #         conn.request(call, parameters)
-            
-    #         parameters = {'action': 'list', 'scan_ref': self.ref, 'show_status': 1}
-    #         self.status = objectify.fromstring(conn.request(call, parameters)).RESPONSE.SCAN_LIST.SCAN.STATUS.STATE
-            
-    # def resume(self, conn):
-    #     if self.status != "Paused":
-    #         raise ValueError("Scan cannot be resumed because its status is "+self.status)
-    #     else:
-    #         call = '/api/2.0/fo/scan/'
-    #         parameters = {'action': 'resume', 'scan_ref': self.ref}
-    #         conn.request(call, parameters)
-            
-    #         parameters = {'action': 'list', 'scan_ref': self.ref, 'show_status': 1}
-    #         self.status = objectify.fromstring(conn.request(call, parameters)).RESPONSE.SCAN_LIST.SCAN.STATUS.STATE
+        conn.request(call, parameters)
+
+        parameters = {'action': 'list',
+                      'scan_ref': self.ref,
+                      'show_status': 1}
+
+        self.status = \
+            objectify.fromstring(conn.request(call, parameters)) \
+                     .RESPONSE.SCAN_LIST.SCAN.STATUS.STATE
+
+    def pause(self, conn):
+        """Pause Scan."""
+
+        # Raise Exception if Scan is not running
+        if self.status != 'Running':
+            err_msg = 'Scan cannot be paused because its status is {0}' \
+                      .format(self.status)
+
+            raise ValueError(err_msg)
+
+        # Pause Scan
+        call = '/api/2.0/fo/scan/'
+        parameters = {'action': 'pause',
+                        'scan_ref': self.ref}
+
+        conn.request(call, parameters)
+        
+        parameters = {'action': 'list',
+                      'scan_ref': self.ref,
+                      'show_status': 1}
+
+        self.status = \
+            objectify.fromstring(conn.request(call, parameters)) \
+                     .RESPONSE.SCAN_LIST.SCAN.STATUS.STATE
+
+    def resume(self, conn):
+        """Resume Scan."""
+
+        # Raise Exception if Scan is not paused
+        if self.status != 'Paused':
+            err_msg = 'Scan cannot be cancelled because its status is {0}' \
+                      .format(self.status)
+
+        # Resume Scan
+        call = '/api/2.0/fo/scan/'
+        parameters = {'action': 'resume',
+                        'scan_ref': self.ref}
+
+        conn.request(call, parameters)
+        
+        parameters = {'action': 'list',
+                      'scan_ref': self.ref,
+                      'show_status': 1}
+
+        self.status = \
+            objectify.fromstring(conn.request(call, parameters)) \
+                     .RESPONSE.SCAN_LIST.SCAN.STATUS.STATE

@@ -63,68 +63,111 @@ class QGActions(object):
             return []
 
     def listAssetGroups(self, groupName=''):
+        """Get Asset Groups."""
         call = 'asset_group_list.php'
+
         if groupName == '':
             agData = objectify.fromstring(self.request(call))
         else:
-            agData = objectify.fromstring(self.request(call, 'title='+groupName)).RESPONSE
+            agData = \
+                objectify.fromstring(self.request(call, 'title='+groupName)) \
+                         .RESPONSE
             
         groupsArray = []
         scanipsArray = []
         scandnsArray = []
         scannersArray = []
+
         for group in agData.ASSET_GROUP:
             try:
                 for scanip in group.SCANIPS:
                     scanipsArray.append(scanip.IP)
+
+            # No IPs defined to scan.
             except AttributeError:
-                scanipsArray = [] # No IPs defined to scan.
+                scanipsArray = []
                 
             try:
                 for scanner in group.SCANNER_APPLIANCES.SCANNER_APPLIANCE:
                     scannersArray.append(scanner.SCANNER_APPLIANCE_NAME)
+
+            # No scanner appliances defined for this group.
             except AttributeError:
-                scannersArray = [] # No scanner appliances defined for this group.
+                scannersArray = []
                 
             try:
                 for dnsName in group.SCANDNS:
                     scandnsArray.append(dnsName.DNS)
+
+            # No DNS names assigned to group.
             except AttributeError:
-                scandnsArray = [] # No DNS names assigned to group.
+                scandnsArray = []
                 
-            groupsArray.append(AssetGroup(group.BUSINESS_IMPACT, group.ID, group.LAST_UPDATE, scanipsArray, scandnsArray, scannersArray, group.TITLE))
+            groupsArray.append(AssetGroup(group.BUSINESS_IMPACT,
+                                          group.ID,
+                                          group.LAST_UPDATE,
+                                          scanipsArray,
+                                          scandnsArray,
+                                          scannersArray,
+                                          group.TITLE))
             
         return groupsArray
         
        
     def listReportTemplates(self):
+        """List Report Templates."""
         call = 'report_template_list.php'
+
         rtData = objectify.fromstring(self.request(call))
         templatesArray = []
         
         for template in rtData.REPORT_TEMPLATE:
-            templatesArray.append(ReportTemplate(template.GLOBAL, template.ID, template.LAST_UPDATE, template.TEMPLATE_TYPE, template.TITLE, template.TYPE, template.USER))
+            templatesArray.append(ReportTemplate(template.GLOBAL,
+                                                 template.ID,
+                                                 template.LAST_UPDATE,
+                                                 template.TEMPLATE_TYPE,
+                                                 template.TITLE,
+                                                 template.TYPE,
+                                                 template.USER))
         
         return templatesArray
         
     def listReports(self, id=0):
+        """List Reports."""
         call = '/api/2.0/fo/report'
         
         if id == 0:
             parameters = {'action': 'list'}
             
-            repData = objectify.fromstring(self.request(call, parameters)).RESPONSE
+            repData = \
+                objectify.fromstring(self.request(call, parameters)).RESPONSE
             reportsArray = []
         
             for report in repData.REPORT_LIST.REPORT:
-                reportsArray.append(Report(report.EXPIRATION_DATETIME, report.ID, report.LAUNCH_DATETIME, report.OUTPUT_FORMAT, report.SIZE, report.STATUS, report.TYPE, report.USER_LOGIN))
+                reportsArray.append(Report(report.EXPIRATION_DATETIME,
+                                           report.ID,
+                                           report.LAUNCH_DATETIME,
+                                           report.OUTPUT_FORMAT,
+                                           report.SIZE,
+                                           report.STATUS,
+                                           report.TYPE,
+                                           report.USER_LOGIN))
         
             return reportsArray
             
         else:
             parameters = {'action': 'list', 'id': id}
-            repData = objectify.fromstring(self.request(call, parameters)).RESPONSE.REPORT_LIST.REPORT
-            return Report(repData.EXPIRATION_DATETIME, repData.ID, repData.LAUNCH_DATETIME, repData.OUTPUT_FORMAT, repData.SIZE, repData.STATUS, repData.TYPE, repData.USER_LOGIN)
+            repData = objectify.fromstring(self.request(call, parameters)) \
+                               .RESPONSE.REPORT_LIST.REPORT
+
+            return Report(repData.EXPIRATION_DATETIME,
+                          repData.ID,
+                          repData.LAUNCH_DATETIME,
+                          repData.OUTPUT_FORMAT,
+                          repData.SIZE,
+                          repData.STATUS,
+                          repData.TYPE,
+                          repData.USER_LOGIN)
 
     def notScannedSince(self, days):
         """
@@ -163,21 +206,30 @@ class QGActions(object):
             return []
         
     def addIP(self, ips, vmpc):
-        #'ips' parameter accepts comma-separated list of IP addresses.
-        #'vmpc' parameter accepts 'vm', 'pc', or 'both'. (Vulnerability Managment, Policy Compliance, or both)
+        """Add IP address."""
+        # 'ips' parameter accepts comma-separated list of IP addresses.
+        # 'vmpc' parameter accepts 'vm', 'pc', or 'both'.
+        # (Vulnerability Managment, Policy Compliance, or both)
         call = '/api/2.0/fo/asset/ip/'
+
         enablevm = 1
         enablepc = 0
+
         if vmpc == 'pc':
             enablevm = 0
             enablepc = 1
+
         elif vmpc == 'both':
             enablevm = 1
             enablepc = 1
             
-        parameters = {'action': 'add', 'ips': ips, 'enable_vm': enablevm, 'enable_pc': enablepc}
+        parameters = {'action': 'add',
+                      'ips': ips,
+                      'enable_vm': enablevm,
+                      'enable_pc': enablepc}
+
         self.request(call, parameters)
-        
+
     def listScans(self, launched_after=None, state=None, target=None,
                   scan_type=None, user_login=None):
         """
@@ -240,30 +292,62 @@ class QGActions(object):
         except KeyError as err:
             return []
         
-    def launchScan(self, title, option_title, iscanner_name, asset_groups="", ip=""):
-        # TODO: Add ability to scan by tag.
+    def launchScan(self, title, option_title,
+                   iscanner_name, asset_groups="", ip=""):
+        """
+        Launch Scan.
+
+        TODO:
+            - Add ability to scan by tag.
+        """
         call = '/api/2.0/fo/scan/'
-        parameters = {'action': 'launch', 'scan_title': title, 'option_title': option_title, 'iscanner_name': iscanner_name, 'ip': ip, 'asset_groups': asset_groups}
+
+        parameters = {'action': 'launch',
+                      'scan_title': title,
+                      'option_title': option_title,
+                      'iscanner_name': iscanner_name,
+                      'ip': ip,
+                      'asset_groups': asset_groups}
+
         if ip == "":
             parameters.pop("ip")
         
         if asset_groups == "":
             parameters.pop("asset_groups")
             
-        scan_ref = objectify.fromstring(self.request(call, parameters)).RESPONSE.ITEM_LIST.ITEM[1].VALUE
+        scan_ref = objectify.fromstring(self.request(call, parameters)) \
+                            .RESPONSE.ITEM_LIST.ITEM[1].VALUE
         
         call = '/api/2.0/fo/scan/'
-        parameters = {'action': 'list', 'scan_ref': scan_ref, 'show_status': 1, 'show_ags': 1, 'show_op': 1}
+
+        parameters = {'action': 'list',
+                      'scan_ref': scan_ref,
+                      'show_status': 1,
+                      'show_ags': 1,
+                      'show_op': 1}
         
-        scan = objectify.fromstring(self.request(call, parameters)).RESPONSE.SCAN_LIST.SCAN
+        scan = objectify.fromstring(self.request(call, parameters)) \
+                        .RESPONSE.SCAN_LIST.SCAN
+
         try:
             agList = []
             for ag in scan.ASSET_GROUP_TITLE_LIST.ASSET_GROUP_TITLE:
                 agList.append(ag)
+
         except AttributeError:
             agList = []
         
-        return Scan(agList, scan.DURATION, scan.LAUNCH_DATETIME, scan.OPTION_PROFILE.TITLE, scan.PROCESSED, scan.REF, scan.STATUS, scan.TARGET, scan.TITLE, scan.TYPE, scan.USER_LOGIN)
+        return Scan(agList,
+                    scan.DURATION,
+                    scan.LAUNCH_DATETIME,
+                    scan.OPTION_PROFILE.TITLE,
+                    scan.PROCESSED,
+                    scan.REF,
+                    scan.STATUS,
+                    scan.TARGET,
+                    scan.TITLE,
+                    scan.TYPE,
+                    scan.USER_LOGIN)
 
     def _request_and_parse_response(self, call, parameters):
         """

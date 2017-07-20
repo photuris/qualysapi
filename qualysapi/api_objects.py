@@ -1,20 +1,53 @@
 from __future__ import absolute_import
 import datetime
+import xmltodict
 from lxml import objectify
 
 class Host(object):
-    def __init__(self, dns, id, ip, last_scan, netbios, os, tracking_method):
-        self.dns = str(dns)
+    """Scanned Host."""
+
+    def __init__(self, dns=None, id=None, ip=None,
+                 last_vuln_scan_datetime=None, netbios=None, os=None,
+                 tracking_method=None, **kwargs):
+        """
+        Initialize instance of Host.
+
+        Keyword Args:
+            dns (str): DNS hostname.
+            id (int): ID.
+            ip (str): IP Address.
+            last_vuln_scan_datetime (str): Last scan date.
+            netbios (str): NetBIOS name.
+            os (str): Operating system.
+            tracking_method (str): Scan tracking method.
+        """
+        self.dns = dns
         self.id = int(id)
-        self.ip = str(ip)
-        last_scan = str(last_scan).replace('T', ' ').replace('Z', '').split(' ')
-        date = last_scan[0].split('-')
-        time = last_scan[1].split(':')
-        self.last_scan = datetime.datetime(int(date[0]), int(date[1]), int(date[2]), int(time[0]), int(time[1]), int(time[2]))
-        self.netbios = str(netbios)
-        self.os = str(os)
-        self.tracking_method = str(tracking_method)
-        
+        self.ip = ip
+
+        last_scan = last_vuln_scan_datetime
+
+        if isinstance(last_scan, str):
+            last_scan = str(last_scan).replace('T', ' ') \
+                                      .replace('Z', '') \
+                                      .split(' ')
+
+            date = last_scan[0].split('-')
+            time = last_scan[1].split(':')
+
+            self.last_scan = datetime.datetime(int(date[0]),
+                                               int(date[1]),
+                                               int(date[2]),
+                                               int(time[0]),
+                                               int(time[1]),
+                                               int(time[2]))
+        else:
+            self.last_scan = None
+
+        self.netbios = netbios
+        self.os = os
+        self.tracking_method = tracking_method
+
 class AssetGroup(object):
     def __init__(self, business_impact, id, last_update, scanips, scandns, scanner_appliances, title):
         self.business_impact = str(business_impact)
@@ -64,52 +97,87 @@ class Report(object):
             return conn.request(call, parameters)
         
 class Scan(object):
-    def __init__(self, assetgroups, duration, launch_datetime, option_profile, processed, ref, status, target, title, type, user_login):
-        self.assetgroups = assetgroups
+    """Scan job."""
+    def __init__(self, asset_groups=[], duration=None, launch_datetime=None,
+                 option_profile=None, processed=None, ref=None, status=None,
+                 target=None, title=None, type=None, user_login=None,
+                 **kwargs):
+        """
+        Initialize instance of Scan.
+
+        Keyword Args:
+            asset_groups (list): Asset groups.
+            duration (str): Scan duration.
+            launch_datetime (str): Launch datetime.
+            option_profile (str): Option profile.
+            processed (int): Processed status.
+            ref (str): Reference.
+            status (str): Scan status.
+            target (str): Scan target.
+            title (str): Scan title.
+            type (str): Scan type.
+            user_login (str): Username.
+        """
+        self.assetgroups = asset_groups
         self.duration = str(duration)
-        launch_datetime = str(launch_datetime).replace('T', ' ').replace('Z', '').split(' ')
+
+        launch_datetime = str(launch_datetime).replace('T', ' ') \
+                                              .replace('Z', '') \
+                                              .split(' ')
         date = launch_datetime[0].split('-')
         time = launch_datetime[1].split(':')
-        self.launch_datetime = datetime.datetime(int(date[0]), int(date[1]), int(date[2]), int(time[0]), int(time[1]), int(time[2]))
+
+        self.launch_datetime = datetime.datetime(int(date[0]),
+                                                 int(date[1]),
+                                                 int(date[2]),
+                                                 int(time[0]),
+                                                 int(time[1]),
+                                                 int(time[2]))
         self.option_profile = str(option_profile)
         self.processed = int(processed)
         self.ref = str(ref)
-        self.status = str(status.STATE)
+        self.status = str(status['state'])
         self.target = str(target).split(', ')
         self.title = str(title)
         self.type = str(type)
         self.user_login = str(user_login)
         
-    def cancel(self, conn):
-        cancelled_statuses = ['Cancelled', 'Finished', 'Error']
-        if any(self.status in s for s in cancelled_statuses):
-            raise ValueError("Scan cannot be cancelled because its status is "+self.status)
-        else:
-            call = '/api/2.0/fo/scan/'
-            parameters = {'action': 'cancel', 'scan_ref': self.ref}
-            conn.request(call, parameters)
+    # def cancel(self, conn):
+    #     """Cancel scan."""
+    #     cancelled_statuses = ['Cancelled', 'Finished', 'Error']
+
+    #     if any(self.status in s for s in cancelled_statuses):
+    #         err_msg = 'Scan cannot be cancelled because its status is {0}' \
+    #                   .format(self.status)
+
+    #         raise ValueError(err_msg)
+
+    #     else:
+    #         call = '/api/2.0/fo/scan/'
+    #         parameters = {'action': 'cancel', 'scan_ref': self.ref}
+    #         conn.request(call, parameters)
             
-            parameters = {'action': 'list', 'scan_ref': self.ref, 'show_status': 1}
-            self.status = objectify.fromstring(conn.request(call, parameters)).RESPONSE.SCAN_LIST.SCAN.STATUS.STATE
+    #         parameters = {'action': 'list', 'scan_ref': self.ref, 'show_status': 1}
+    #         self.status = objectify.fromstring(conn.request(call, parameters)).RESPONSE.SCAN_LIST.SCAN.STATUS.STATE
+
+    # def pause(self, conn):
+    #     if self.status != "Running":
+    #         raise ValueError("Scan cannot be paused because its status is "+self.status)
+    #     else:
+    #         call = '/api/2.0/fo/scan/'
+    #         parameters = {'action': 'pause', 'scan_ref': self.ref}
+    #         conn.request(call, parameters)
             
-    def pause(self, conn):
-        if self.status != "Running":
-            raise ValueError("Scan cannot be paused because its status is "+self.status)
-        else:
-            call = '/api/2.0/fo/scan/'
-            parameters = {'action': 'pause', 'scan_ref': self.ref}
-            conn.request(call, parameters)
+    #         parameters = {'action': 'list', 'scan_ref': self.ref, 'show_status': 1}
+    #         self.status = objectify.fromstring(conn.request(call, parameters)).RESPONSE.SCAN_LIST.SCAN.STATUS.STATE
             
-            parameters = {'action': 'list', 'scan_ref': self.ref, 'show_status': 1}
-            self.status = objectify.fromstring(conn.request(call, parameters)).RESPONSE.SCAN_LIST.SCAN.STATUS.STATE
+    # def resume(self, conn):
+    #     if self.status != "Paused":
+    #         raise ValueError("Scan cannot be resumed because its status is "+self.status)
+    #     else:
+    #         call = '/api/2.0/fo/scan/'
+    #         parameters = {'action': 'resume', 'scan_ref': self.ref}
+    #         conn.request(call, parameters)
             
-    def resume(self, conn):
-        if self.status != "Paused":
-            raise ValueError("Scan cannot be resumed because its status is "+self.status)
-        else:
-            call = '/api/2.0/fo/scan/'
-            parameters = {'action': 'resume', 'scan_ref': self.ref}
-            conn.request(call, parameters)
-            
-            parameters = {'action': 'list', 'scan_ref': self.ref, 'show_status': 1}
-            self.status = objectify.fromstring(conn.request(call, parameters)).RESPONSE.SCAN_LIST.SCAN.STATUS.STATE
+    #         parameters = {'action': 'list', 'scan_ref': self.ref, 'show_status': 1}
+    #         self.status = objectify.fromstring(conn.request(call, parameters)).RESPONSE.SCAN_LIST.SCAN.STATUS.STATE

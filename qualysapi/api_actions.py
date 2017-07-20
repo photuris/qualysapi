@@ -1,29 +1,67 @@
 from __future__ import absolute_import
 from lxml import objectify
+import xmltodict
 import qualysapi.api_objects
 from qualysapi.api_objects import *
 
-class QGActions(object):  
-    def getHost(host):
+# pylint: disable=I0011, C0103
+
+class QGActions(object):
+    """QualysGuard API Query Actions."""
+
+    def getHost(self, host_ip=''):
+        """
+        Get Host record from API.
+
+        Keyword Args:
+            host_ip (str): Host IP address.
+
+        Returns:
+            (Host): Host object.
+        """
         call = '/api/2.0/fo/asset/host/'
-        parameters = {'action': 'list', 'ips': host, 'details': 'All'}
-        hostData = objectify.fromstring(self.request(call, parameters)).RESPONSE
+        parameters = {'action': 'list', 'ips': host_ip, 'details': 'All'}
+
+        host_data = self._request_and_parse_response(call, parameters) \
+                        ['host_list_output']['response']
+
+        # Host exists in result set
         try:
-            hostData = hostData.HOST_LIST.HOST
-            return Host(hostData.DNS, hostData.ID, hostData.IP, hostData.LAST_VULN_SCAN_DATETIME, hostData.NETBIOS, hostData.OS, hostData.TRACKING_METHOD)
-        except AttributeError:
-            return Host("", "", host, "never", "", "", "")
-        
-    def getHostRange(self, start, end):
+            if 'host' in host_data['host_list']:
+                return Host(**host_data['host_list']['host'])
+
+        # Return empty Host
+        except KeyError:
+            return Host('', '', host_ip, 'never', '', '', '')
+
+    def getHostRange(self, start_ip='', end_ip=''):
+        """
+        Get Host records from API by IP range.
+
+        Keyword Args:
+            start_ip (str): IP range start address.
+            end_ip (str): IP range end address.
+
+        Yields:
+            (Host): Host instances.
+        """
         call = '/api/2.0/fo/asset/host/'
-        parameters = {'action': 'list', 'ips': start+'-'+end}
-        hostData = objectify.fromstring(self.request(call, parameters))
-        hostArray = []
-        for host in hostData.RESPONSE.HOST_LIST.HOST:
-            hostArray.append(Host(host.DNS, host.ID, host.IP, host.LAST_VULN_SCAN_DATETIME, host.NETBIOS, host.OS, host.TRACKING_METHOD))
-            
-        return hostArray
-        
+        parameters = {'action': 'list',
+                      'ips': '{0}-{1}'.format(start_ip, end_ip)}
+
+        host_data = self._request_and_parse_response(call, parameters) \
+                        ['host_list_output']['response']
+
+        # Hosts exist in result set
+        try:
+            if 'host' in host_data['host_list']:
+                for host in host_data['host_list']['host']:
+                    yield Host(**host)
+
+        # Return empty Host
+        except KeyError:
+            return []
+
     def listAssetGroups(self, groupName=''):
         call = 'asset_group_list.php'
         if groupName == '':
@@ -87,21 +125,42 @@ class QGActions(object):
             parameters = {'action': 'list', 'id': id}
             repData = objectify.fromstring(self.request(call, parameters)).RESPONSE.REPORT_LIST.REPORT
             return Report(repData.EXPIRATION_DATETIME, repData.ID, repData.LAUNCH_DATETIME, repData.OUTPUT_FORMAT, repData.SIZE, repData.STATUS, repData.TYPE, repData.USER_LOGIN)
-        
-        
+
     def notScannedSince(self, days):
+        """
+        Get Hosts not scanned within specified number of days.
+
+        Args:
+            days (int): Number of days since last scanned.
+
+        Yields:
+            (Host): Host instances.
+        """
         call = '/api/2.0/fo/asset/host/'
         parameters = {'action': 'list', 'details': 'All'}
-        hostData = objectify.fromstring(self.request(call, parameters))
-        hostArray = []
+
+        host_data = self._request_and_parse_response(call, parameters) \
+                        ['host_list_output']['response']
+
         today = datetime.date.today()
-        for host in hostData.RESPONSE.HOST_LIST.HOST:
-            last_scan = str(host.LAST_VULN_SCAN_DATETIME).split('T')[0]
-            last_scan = datetime.date(int(last_scan.split('-')[0]), int(last_scan.split('-')[1]), int(last_scan.split('-')[2]))
-            if (today - last_scan).days >= days:
-                hostArray.append(Host(host.DNS, host.ID, host.IP, host.LAST_VULN_SCAN_DATETIME, host.NETBIOS, host.OS, host.TRACKING_METHOD))
-        
-        return hostArray
+
+        # Hosts exist in result set
+        try:
+            if 'host' in host_data['host_list']:
+                for host in host_data['host_list']['host']:
+                    last_scan = \
+                        str(host['last_vuln_scan_datetime']).split('T')[0]
+
+                    last_scan = datetime.date(int(last_scan.split('-')[0]),
+                                              int(last_scan.split('-')[1]),
+                                              int(last_scan.split('-')[2]))
+
+                    if (today - last_scan).days >= days:
+                        yield Host(**host)
+
+        # Return empty Host
+        except KeyError:
+            return []
         
     def addIP(self, ips, vmpc):
         #'ips' parameter accepts comma-separated list of IP addresses.
@@ -119,42 +178,67 @@ class QGActions(object):
         parameters = {'action': 'add', 'ips': ips, 'enable_vm': enablevm, 'enable_pc': enablepc}
         self.request(call, parameters)
         
-    def listScans(self, launched_after="", state="", target="", type="", user_login=""):
-        #'launched_after' parameter accepts a date in the format: YYYY-MM-DD
-        #'state' parameter accepts "Running", "Paused", "Canceled", "Finished", "Error", "Queued", and "Loading".
-        #'title' parameter accepts a string
-        #'type' parameter accepts "On-Demand", and "Scheduled".
-        #'user_login' parameter accepts a user name (string)
+    def listScans(self, launched_after=None, state=None, target=None,
+                  scan_type=None, user_login=None):
+        """
+        List scans.
+
+        Keyword Args:
+            launched_after (str): Date in YYYY-MM-DD format.
+            state (str): 'Running', 'Paused', 'Canceled', 'Finished',
+                         'Error', 'Queued', or 'Loading'.
+            title (str): Scan title.
+            type (str): 'On-Demand' or 'Scheduled'
+            user_login (str): Username.
+
+        Yields:
+            (Scan): Scan instances.
+        """
         call = '/api/2.0/fo/scan/'
-        parameters = {'action': 'list', 'show_ags': 1, 'show_op': 1, 'show_status': 1}
-        if launched_after != "":
+        parameters = {'action': 'list',
+                      'show_ags': 1,
+                      'show_op': 1,
+                      'show_status': 1}
+
+        if launched_after is not None:
             parameters['launched_after_datetime'] = launched_after
-            
-        if state != "":
+           
+        if state is not None:
             parameters['state'] = state
-            
-        if target != "":
+           
+        if target is not None:
             parameters['target'] = target
-            
-        if type != "":
-            parameters['type'] = type
-        
-        if user_login != "":
+           
+        if scan_type is not None:
+            parameters['type'] = scan_type
+
+        if user_login is not None:
             parameters['user_login'] = user_login
-            
-        scanlist = objectify.fromstring(self.request(call, parameters))
-        scanArray = []
-        for scan in scanlist.RESPONSE.SCAN_LIST.SCAN:
-            try:
-                agList = []
-                for ag in scan.ASSET_GROUP_TITLE_LIST.ASSET_GROUP_TITLE:
-                    agList.append(ag)
-            except AttributeError:
-                agList = []
-            
-            scanArray.append(Scan(agList, scan.DURATION, scan.LAUNCH_DATETIME, scan.OPTION_PROFILE.TITLE, scan.PROCESSED, scan.REF, scan.STATUS, scan.TARGET, scan.TITLE, scan.TYPE, scan.USER_LOGIN))
-            
-        return scanArray
+
+        scan_data = self._request_and_parse_response(call, parameters) \
+                        ['scan_list_output']['response']
+
+        # Scans exist in result set
+        try:
+            if 'scan' in scan_data['scan_list']:
+                for scan in scan_data['scan_list']['scan']:
+                    try:
+                        title_list = \
+                            scan['asset_group_title_list']['asset_group_title']
+
+                        if isinstance(title_list, list):
+                            ag_list = title_list
+                        else:
+                            ag_list = [title_list]
+
+                    except (AttributeError, KeyError):
+                        ag_list = []
+
+                    yield Scan(asset_groups=ag_list, **scan)
+
+        # Return empty result set
+        except KeyError as err:
+            return []
         
     def launchScan(self, title, option_title, iscanner_name, asset_groups="", ip=""):
         # TODO: Add ability to scan by tag.
@@ -180,3 +264,39 @@ class QGActions(object):
             agList = []
         
         return Scan(agList, scan.DURATION, scan.LAUNCH_DATETIME, scan.OPTION_PROFILE.TITLE, scan.PROCESSED, scan.REF, scan.STATUS, scan.TARGET, scan.TITLE, scan.TYPE, scan.USER_LOGIN)
+
+    def _request_and_parse_response(self, call, parameters):
+        """
+        Query API, parse and return response.
+        
+        Args:
+            call (str): URL path to API call.
+            parameters (dict): Query parameters.
+
+        Returns:
+            (dict): Parse response from API.
+        """
+        response = lower_keys(xmltodict.parse(self.request(call, parameters),
+                                              dict_constructor=dict,
+                                              xml_attribs=True,
+                                              encoding='utf-8'))
+
+        return response
+
+    # PEP8 cleanup, preserved method names for backwards-compatibility
+    get_host = getHost
+    get_hosts_within_ip_range = getHostRange
+    get_hosts_not_scanned_since = notScannedSince
+    get_scans = listScans
+
+
+def lower_keys(x):
+    """Lowercase dict keys."""
+    if isinstance(x, list):
+        return [lower_keys(v) for v in x]
+
+    elif isinstance(x, dict):
+        return dict((k.lower(), lower_keys(v)) for k, v in x.items())
+
+    else:
+        return x

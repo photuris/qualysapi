@@ -42,8 +42,8 @@ setup(name=__pkgname__,
           'Intended Audience :: Developers',
       ],
       install_requires=[
-          'requests',
-          'lxml',
-          'six'
+          # 'requests',
+          # 'lxml',
+          # 'six'
       ],
      )

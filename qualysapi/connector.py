@@ -267,7 +267,7 @@ class QGConnector(api_actions.QGActions):
         logger.debug('headers =\n%s' % (str(headers)))
         # Portal API takes in XML text, requiring custom header.
         if api_version in ('am', 'was'):
-            headers['Content-type'] = 'text/xml'
+            headers['Content-type'] = 'application/json'
         #
         # Set up http request method, if not specified.
         if not http_method:

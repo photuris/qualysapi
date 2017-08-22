@@ -60,58 +60,39 @@ class QGActions(object):
 
         # Return empty Host
         except KeyError:
-            return []
+            yield None
 
-    def listAssetGroups(self, groupName=''):
-        """Get Asset Groups."""
-        call = 'asset_group_list.php'
+    def listAssetGroups(self, title=None):
+        """
+        Get Asset Groups.
+        
+        Keyword Args:
+            title (str): Asset Group title.
+        """
+        call = '/api/2.0/fo/asset/group/'
+        parameters = {'action': 'list',
+                      'show_attributes': 'ALL'}
 
-        if groupName == '':
-            agData = objectify.fromstring(self.request(call))
-        else:
-            agData = \
-                objectify.fromstring(self.request(call, 'title='+groupName)) \
-                         .RESPONSE
-            
-        groupsArray = []
-        scanipsArray = []
-        scandnsArray = []
-        scannersArray = []
+        if title is not None:
+            parameters['title'] = title
 
-        for group in agData.ASSET_GROUP:
-            try:
-                for scanip in group.SCANIPS:
-                    scanipsArray.append(scanip.IP)
+        groups_data = self._request_and_parse_response(call, parameters) \
+                          ['asset_group_list_output']['response']
+        
+        # Asset Groups exist in result set
+        try:
+            if 'asset_group_list' in groups_data:
+                groups = groups_data['asset_group_list']['asset_group']
 
-            # No IPs defined to scan.
-            except AttributeError:
-                scanipsArray = []
-                
-            try:
-                for scanner in group.SCANNER_APPLIANCES.SCANNER_APPLIANCE:
-                    scannersArray.append(scanner.SCANNER_APPLIANCE_NAME)
+                # Single result to list
+                groups = [groups] if not isinstance(groups, list) else groups
 
-            # No scanner appliances defined for this group.
-            except AttributeError:
-                scannersArray = []
-                
-            try:
-                for dnsName in group.SCANDNS:
-                    scandnsArray.append(dnsName.DNS)
+                for group in groups:
+                    yield AssetGroup(**group)
 
-            # No DNS names assigned to group.
-            except AttributeError:
-                scandnsArray = []
-                
-            groupsArray.append(AssetGroup(group.BUSINESS_IMPACT,
-                                          group.ID,
-                                          group.LAST_UPDATE,
-                                          scanipsArray,
-                                          scandnsArray,
-                                          scannersArray,
-                                          group.TITLE))
-            
-        return groupsArray
+        # Return empty Asset Groups list
+        except KeyError:
+            yield None
         
        
     def listReportTemplates(self):
@@ -131,6 +112,7 @@ class QGActions(object):
                                                  template.USER))
         
         return templatesArray
+        
         
     def listReports(self, id=0):
         """List Reports."""
@@ -203,7 +185,7 @@ class QGActions(object):
 
         # Return empty Host
         except KeyError:
-            return []
+            yield None
         
     def addIP(self, ips, vmpc):
         """Add IP address."""
@@ -290,7 +272,7 @@ class QGActions(object):
 
         # Return empty result set
         except KeyError as err:
-            return []
+            yield None
         
     def launchScan(self, title, option_title,
                    iscanner_name, asset_groups="", ip=""):
@@ -372,6 +354,7 @@ class QGActions(object):
     get_hosts_within_ip_range = getHostRange
     get_hosts_not_scanned_since = notScannedSince
     get_scans = listScans
+    get_asset_groups = listAssetGroups
 
 
 def lower_keys(x):

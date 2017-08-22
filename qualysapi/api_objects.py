@@ -1,7 +1,9 @@
 from __future__ import absolute_import
 import datetime
+import dateutil.parser
 import xmltodict
 from lxml import objectify
+from ipaddress import (IPv4Address, IPv4Network, summarize_address_range)
 
 """Object representations of API data types."""
 
@@ -28,24 +30,8 @@ class Host(object):
         self.id = int(id)
         self.ip = ip
 
-        last_scan = last_vuln_scan_datetime
-
-        if isinstance(last_scan, str):
-            last_scan = str(last_scan).replace('T', ' ') \
-                                      .replace('Z', '') \
-                                      .split(' ')
-
-            date = last_scan[0].split('-')
-            time = last_scan[1].split(':')
-
-            self.last_scan = datetime.datetime(int(date[0]),
-                                               int(date[1]),
-                                               int(date[2]),
-                                               int(time[0]),
-                                               int(time[1]),
-                                               int(time[2]))
-        else:
-            self.last_scan = None
+        self.last_scan = dateutil.parser.parse(last_vuln_scan_datetime) \
+            if last_vuln_scan_datetime else None
 
         self.netbios = netbios
         self.os = os
@@ -55,29 +41,101 @@ class Host(object):
 class AssetGroup(object):
     """Asset Group."""
 
-    def __init__(self, business_impact=None, id=None, last_update=None,
+    def __init__(self, business_impact=None, id=None, unit_id=None,
+                 owner_id=None, network_id=None, last_update=None,
                  scan_ips=None, scan_dns=None, scanner_appliances=None,
-                 title=None):
+                 title=None, ip_set=None, scandns=None, **kwargs):
         """
         Initialize instance of AssetGroup.
 
         Keyword Args:
             business_impact (str): Business impact.
             id (int): ID.
+            unit_id (int): Unit ID.
+            owner_id (int): Owner ID.
+            network_id (int): Network ID.
             last_update (str): Last updated date.
             scan_ips (list): Scan IPs.
             scan_dns (str): Scan DNS.
             scanner_appliances (list): Scanner appliances.
             title (str): Asset Group title.
+            ip_set (list): Scan IPs (as they come in from the API).
         """
         self.business_impact = str(business_impact)
         self.id = int(id)
-        self.last_update = str(last_update)
-        self.scan_ips = scan_ips
-        self.scan_dns = scan_dns
-        self.scanner_appliances = scanner_appliances
         self.title = str(title)
-        
+        self.unit_id = unit_id
+        self.owner_id = owner_id
+        self.network_id = network_id
+        self.last_update = dateutil.parser.parse(last_update)
+        self.ip_ranges = set()
+
+        # Scan IP address ranges
+        if 'ip_range' in ip_set:
+            for ip_range in ip_set['ip_range']:
+                # Dash-delimited string
+                if '-' in ip_range:
+                    start_ip, end_ip = ip_range.split('-')
+                    start_ip = IPv4Address(start_ip.strip())
+                    end_ip = IPv4Address(end_ip.strip())
+
+                    for ipn in summarize_address_range(start_ip, end_ip):
+                        network = IPv4Network(ipn)
+                        self.ip_ranges.add(network)
+
+        # Single IP addresses
+        if 'ip' in ip_set:
+            for ip in ip_set['ip']:
+                ip = IPv4Address(ip)
+
+                for ipn in summarize_address_range(ip, ip):
+                    self.ip_ranges.add(IPv4Network(ipn))
+
+        # DNS as passed in manually
+        if scan_dns:
+            self.scan_dns = scan_dns if scan_dns else []
+
+        # DNS as passed in by API
+        elif scandns:
+            self.scan_dns = scandns if scandns else []
+
+        else:
+            self.scan_dns = []
+
+        # Scanner appliances as passed in manually
+        if isinstance(scanner_appliances, list):
+            self.scanner_appliances = [app for app in scanner_appliances]
+ 
+        # Scanner appliances as passed in by API
+        elif (isinstance(scanner_appliances, dict)
+                and 'scanner_appliance' in scanner_appliances):
+            self.scanner_appliances = [app for app in scanner_appliances
+                                            ['scanner_appliance']]
+
+        else:
+            self.scanner_appliances = []
+
+    @property
+    def ip_addresses(self):
+        """IP addresses in ranges."""
+        ip_addresses = set()
+
+        for ipn in self.ip_ranges:
+            for ip in ipn:
+                ip_addresses.add(ip)
+
+        return ip_addresses
+
+    @property
+    def ip_range_strings(self):
+        """IP ranges in dash-string format."""
+        ranges = set()
+
+        for ipn in self.ip_ranges:
+            ranges.add('{0}-{1}'.format(ipn[0], ipn[-1]))
+
+        return ranges
+
     def addAsset(self, conn, ip):
         """Add Asset to Asset Group."""
         call = '/api/2.0/fo/asset/group/'
@@ -127,13 +185,12 @@ class ReportTemplate(object):
         self.isGlobal = int(is_global)
         self.is_global = self.isGlobal
         self.id = int(id)
-        self.last_update = str(last_update).replace('T', ' ') \
-                                           .replace('Z', '') \
-                                           .split(' ')
         self.template_type = template_type
         self.title = title
         self.type = type
         self.user = user.LOGIN
+        self.last_update = dateutil.parser.parse(last_update) \
+            if last_update else None
 
 
 class Report(object):
@@ -141,19 +198,20 @@ class Report(object):
     def __init__(self, expiration_datetime, id,
                  launch_datetime, output_format, size,
                  status, type, user_login):
-        self.expiration_datetime = str(expiration_datetime).replace('T', ' ') \
-                                                           .replace('Z', '') \
-                                                           .split(' ')
+        """Initialize instance of Report."""
         self.id = int(id)
-        self.launch_datetime = str(launch_datetime).replace('T', ' ') \
-                                                   .replace('Z', '') \
-                                                   .split(' ')
         self.output_format = output_format
         self.size = size
         self.status = status.STATE
         self.type = type
         self.user_login = user_login
+
+        self.launch_datetime = dateutil.parser.parse(launch_datetime) \
+            if launch_datetime else None
         
+        self.expiration_datetime = dateutil.parser.parse(expiration_datetime) \
+            if expiration_datetime else None
+
     def download(self, conn):
         """Download Report."""
         call = '/api/2.0/fo/report'
@@ -187,19 +245,6 @@ class Scan(object):
         """
         self.assetgroups = asset_groups
         self.duration = str(duration)
-
-        launch_datetime = str(launch_datetime).replace('T', ' ') \
-                                              .replace('Z', '') \
-                                              .split(' ')
-        date = launch_datetime[0].split('-')
-        time = launch_datetime[1].split(':')
-
-        self.launch_datetime = datetime.datetime(int(date[0]),
-                                                 int(date[1]),
-                                                 int(date[2]),
-                                                 int(time[0]),
-                                                 int(time[1]),
-                                                 int(time[2]))
         self.option_profile = str(option_profile)
         self.processed = int(processed)
         self.ref = str(ref)
@@ -208,6 +253,8 @@ class Scan(object):
         self.title = str(title)
         self.type = str(type)
         self.user_login = str(user_login)
+        self.launch_datetime = dateutil.parser.parse(launch_datetime) \
+            if launch_datetime else None
         
     def cancel(self, conn):
         """Cancel scan."""
